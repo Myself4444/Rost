@@ -1,0 +1,286 @@
+import { useState, useRef, useEffect } from 'react';
+import { Mic, MicOff, Flame, Volume2, Skull } from 'lucide-react';
+import { motion } from 'motion/react';
+
+export default function App() {
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  
+  const wsRef = useRef<WebSocket | null>(null);
+  const inputAudioCtxRef = useRef<AudioContext | null>(null);
+  const outputAudioCtxRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const nextStartTimeRef = useRef<number>(0);
+
+  const connect = async () => {
+    setIsConnecting(true);
+    
+    try {
+      const wsUrl = location.protocol === 'https:' ? `wss://${location.host}/live` : `ws://${location.host}/live`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = async () => {
+        setIsConnected(true);
+        setIsConnecting(false);
+
+        const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+        inputAudioCtxRef.current = inputCtx;
+        
+        const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        outputAudioCtxRef.current = outputCtx;
+        nextStartTimeRef.current = 0;
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          streamRef.current = stream;
+          
+          const source = inputCtx.createMediaStreamSource(stream);
+          sourceRef.current = source;
+          
+          const processor = inputCtx.createScriptProcessor(4096, 1, 1);
+          processorRef.current = processor;
+          
+          source.connect(processor);
+          processor.connect(inputCtx.destination);
+
+          processor.onaudioprocess = (e) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              const base64 = pcmToBase64(e.inputBuffer.getChannelData(0));
+              ws.send(JSON.stringify({ audio: base64 }));
+            }
+          };
+        } catch (e) {
+          console.error("Microphone access denied or failed", e);
+          disconnect();
+        }
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.audio) {
+          playAudioChunk(msg.audio);
+        }
+        if (msg.interrupted) {
+          nextStartTimeRef.current = 0;
+        }
+      };
+
+      ws.onclose = () => {
+        disconnect();
+      };
+      
+      ws.onerror = (e) => {
+        console.error("WebSocket error", e);
+        disconnect();
+      };
+
+    } catch (e) {
+      console.error(e);
+      disconnect();
+    }
+  };
+
+  const disconnect = () => {
+    setIsConnected(false);
+    setIsConnecting(false);
+    
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (inputAudioCtxRef.current) {
+      inputAudioCtxRef.current.close();
+      inputAudioCtxRef.current = null;
+    }
+    if (outputAudioCtxRef.current) {
+      outputAudioCtxRef.current.close();
+      outputAudioCtxRef.current = null;
+    }
+    nextStartTimeRef.current = 0;
+  };
+
+  useEffect(() => {
+    return () => {
+      disconnect();
+    };
+  }, []);
+
+  const playAudioChunk = (base64: string) => {
+    const ctx = outputAudioCtxRef.current;
+    if (!ctx) return;
+    
+    const binaryStr = atob(base64);
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    const int16Array = new Int16Array(bytes.buffer);
+    const float32Array = new Float32Array(int16Array.length);
+    for (let i = 0; i < int16Array.length; i++) {
+      float32Array[i] = int16Array[i] / 32768.0;
+    }
+
+    const buffer = ctx.createBuffer(1, float32Array.length, 24000);
+    buffer.getChannelData(0).set(float32Array);
+    
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    
+    const currTime = ctx.currentTime;
+    if (nextStartTimeRef.current < currTime) {
+      nextStartTimeRef.current = currTime;
+    }
+    source.start(nextStartTimeRef.current);
+    nextStartTimeRef.current += buffer.duration;
+  };
+
+  const pcmToBase64 = (float32Array: Float32Array) => {
+    const int16Array = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+      let val = float32Array[i] * 32768.0;
+      val = Math.max(-32768, Math.min(32767, val));
+      int16Array[i] = val;
+    }
+    const bytes = new Uint8Array(int16Array.buffer);
+    let binaryStr = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binaryStr += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binaryStr);
+  };
+
+  return (
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 font-sans">
+      <div className="w-full max-w-md mx-auto text-center space-y-12">
+        
+        {/* Header section */}
+        <div className="space-y-4">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="inline-flex items-center justify-center p-3 rounded-full bg-rose-500/10 text-rose-500 mb-2"
+          >
+            <Flame className="w-8 h-8" />
+          </motion.div>
+          <h1 className="text-4xl font-bold tracking-tight text-white">
+            RoastBot 9000
+          </h1>
+          <p className="text-neutral-400 text-lg leading-relaxed">
+            Think you can handle the heat? Talk to me and find out. (Hindi Mode)
+          </p>
+        </div>
+
+        {/* Main interactive area */}
+        <div className="relative flex flex-col items-center justify-center min-h-[250px]">
+          
+          {/* Animated rings for active state */}
+          {isConnected && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            >
+              {[1, 2, 3].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{
+                    scale: [1, 1.5, 2],
+                    opacity: [0.5, 0.2, 0],
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    delay: i * 0.4,
+                    ease: "easeOut",
+                  }}
+                  className="absolute w-32 h-32 rounded-full border border-rose-500/50"
+                />
+              ))}
+            </motion.div>
+          )}
+
+          {/* Core Button */}
+          <motion.button
+            id="toggle-mic-btn"
+            onClick={isConnected ? disconnect : connect}
+            disabled={isConnecting}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`
+              relative z-10 w-32 h-32 rounded-full flex flex-col items-center justify-center gap-2
+              transition-colors duration-300 shadow-xl
+              ${isConnected 
+                ? 'bg-rose-500 text-white shadow-rose-500/30 shadow-[0_0_40px_-10px_var(--tw-shadow-color)]' 
+                : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white'
+              }
+              ${isConnecting ? 'opacity-50 cursor-not-allowed' : ''}
+            `}
+          >
+            {isConnecting ? (
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full"
+              />
+            ) : isConnected ? (
+              <>
+                <Skull className="w-10 h-10" />
+                <span className="text-sm font-semibold tracking-wide uppercase">End Battle</span>
+              </>
+            ) : (
+              <>
+                <Mic className="w-10 h-10" />
+                <span className="text-sm font-semibold tracking-wide uppercase">Tap to Roast</span>
+              </>
+            )}
+          </motion.button>
+        </div>
+
+        {/* Status Indicator */}
+        <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-neutral-900 border border-neutral-800">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-rose-500 animate-pulse' : 'bg-neutral-600'}`} />
+            <span className="text-sm font-medium text-neutral-300">
+              {isConnecting ? 'Warming up the servers...' : isConnected ? 'Live: Throw your best insult' : 'Disconnected'}
+            </span>
+          </div>
+        </div>
+
+        {/* Instructions/Sass */}
+        {!isConnected && !isConnecting && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-6 rounded-2xl bg-neutral-900/50 border border-neutral-800 text-neutral-400 text-sm"
+          >
+            <p><strong>Rules of engagement:</strong></p>
+            <ul className="mt-2 space-y-1 text-left list-disc list-inside">
+              <li>Speak clearly in Hindi or English.</li>
+              <li>Wait for the brutal comeback.</li>
+              <li>Don't cry.</li>
+            </ul>
+          </motion.div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
