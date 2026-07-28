@@ -1,6 +1,6 @@
 {
   "name": "RoastBot 9000",
-  "description": "A live roasting AI voice battle app.",
+  "description": "A live AI voice chat app with multiple tones (sarcastic, friendly, angry, poetic).",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
