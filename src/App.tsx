@@ -113,8 +113,13 @@ export default function App() {
             });
           }
         };
-      } catch (e) {
+      } catch (e: any) {
         console.error("Microphone access denied or failed", e);
+        if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+           alert("Microphone access was denied. Please allow microphone permissions in your browser settings. If you are using the AI Studio preview, you may need to open the app in a new tab using the button in the top right.");
+        } else {
+           alert("Could not access your microphone. Please ensure you have a microphone connected and have granted permissions.");
+        }
         disconnect();
       }
 
