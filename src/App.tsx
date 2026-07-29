@@ -12,6 +12,7 @@ export default function App() {
   const [language, setLanguage] = useState('hindi');
   
   const sessionRef = useRef<any>(null);
+  const resumptionHandleRef = useRef<string | null>(null);
   const inputAudioCtxRef = useRef<AudioContext | null>(null);
   const outputAudioCtxRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -44,17 +45,28 @@ export default function App() {
         voiceName = "Zephyr";
       }
 
+      const config: any = {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+        },
+        systemInstruction,
+      };
+
+      if (resumptionHandleRef.current) {
+        config.sessionResumption = { handle: resumptionHandleRef.current };
+      }
+
       sessionRef.current = await ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName } },
-          },
-          systemInstruction,
-        },
+        config,
         callbacks: {
           onmessage: (message: LiveServerMessage) => {
+            if (message.sessionResumptionUpdate && message.sessionResumptionUpdate.resumable !== false) {
+              if (message.sessionResumptionUpdate.newHandle) {
+                resumptionHandleRef.current = message.sessionResumptionUpdate.newHandle;
+              }
+            }
             const audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (audio) {
               playAudioChunk(audio);
@@ -249,7 +261,15 @@ export default function App() {
               Save Key
             </button>
             <p className="text-xs text-neutral-500">
-              Keys are saved locally in your browser.
+              Keys are saved locally in your browser.{' '}
+              <a 
+                href="https://aistudio.google.com/app/apikey" 
+                target="_blank" 
+                rel="noreferrer" 
+                className="text-neutral-300 hover:text-white underline underline-offset-2 transition-colors"
+              >
+                Get a Gemini API key
+              </a>
             </p>
           </div>
         )}
@@ -360,6 +380,8 @@ export default function App() {
         </div>
 
       </div>
+
+
     </div>
   );
 }
