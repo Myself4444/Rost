@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Skull, Flame } from 'lucide-react';
+import { Mic, Flame, Skull } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function App() {
@@ -193,6 +193,23 @@ export default function App() {
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 font-sans">
       <div className="w-full max-w-md mx-auto text-center space-y-12">
         
+        {/* Header section */}
+        <div className="space-y-4">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="inline-flex items-center justify-center p-3 rounded-full bg-rose-500/10 text-rose-500 mb-2"
+          >
+            <Flame className="w-8 h-8" />
+          </motion.div>
+          <h1 className="text-4xl font-bold tracking-tight text-white">
+            RoastBot 9000
+          </h1>
+          <p className="text-neutral-400 text-lg leading-relaxed">
+            Think you can handle the heat? Talk to me and find out. (Hindi Mode)
+          </p>
+        </div>
+
         {/* Main interactive area */}
         <div className="relative flex flex-col items-center justify-center min-h-[250px]">
           
@@ -248,12 +265,12 @@ export default function App() {
             ) : isConnected ? (
               <>
                 <Skull className="w-10 h-10" />
-                <span className="text-sm font-bold tracking-widest uppercase">End Battle</span>
+                <span className="text-sm font-semibold tracking-wide uppercase">End Battle</span>
               </>
             ) : (
               <>
-                <Flame className="w-10 h-10 text-orange-500" />
-                <span className="text-xs font-black tracking-[0.2em] uppercase bg-gradient-to-br from-orange-400 to-rose-500 text-transparent bg-clip-text mt-1">Ignite</span>
+                <Mic className="w-10 h-10" />
+                <span className="text-sm font-semibold tracking-wide uppercase">Tap to Roast</span>
               </>
             )}
           </motion.button>
@@ -269,7 +286,21 @@ export default function App() {
           </div>
         </div>
 
-
+        {/* Instructions/Sass */}
+        {!isConnected && !isConnecting && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-6 rounded-2xl bg-neutral-900/50 border border-neutral-800 text-neutral-400 text-sm"
+          >
+            <p><strong>Rules of engagement:</strong></p>
+            <ul className="mt-2 space-y-1 text-left list-disc list-inside">
+              <li>Speak clearly in Hindi or English.</li>
+              <li>Wait for the brutal comeback.</li>
+              <li>Don't cry.</li>
+            </ul>
+          </motion.div>
+        )}
 
       </div>
     </div>
