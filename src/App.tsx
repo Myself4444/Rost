@@ -1,15 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Flame, Skull, Key } from 'lucide-react';
+import { Mic, Flame, Skull, Settings, X } from 'lucide-react';
 import { motion } from 'motion/react';
-import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 
 export default function App() {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
-  const [isApiKeySet, setIsApiKeySet] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState(() => {
+    try {
+      return localStorage.getItem('geminiApiKey') || '';
+    } catch (e) {
+      return '';
+    }
+  });
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const [gameMode, setGameMode] = useState('roast');
   
-  const sessionRef = useRef<any>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const inputAudioCtxRef = useRef<AudioContext | null>(null);
   const outputAudioCtxRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -18,26 +26,15 @@ export default function App() {
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
 
-  useEffect(() => {
-    if (apiKey) {
-      localStorage.setItem('gemini_api_key', apiKey);
-    }
-  }, [apiKey]);
-
-  const handleSetApiKey = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (apiKey.trim()) {
-      setIsApiKeySet(true);
-    }
-  };
-
   const connect = async () => {
-    if (!apiKey) return;
-    
     setIsConnecting(true);
+    setErrorMessage(null);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/live?mode=${gameMode}${customApiKey ? `&apiKey=${encodeURIComponent(customApiKey)}` : ''}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
       
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       inputAudioCtxRef.current = inputCtx;
@@ -46,78 +43,76 @@ export default function App() {
       outputAudioCtxRef.current = outputCtx;
       nextStartTimeRef.current = 0;
 
-      const session = await ai.live.connect({
-        model: "gemini-3.1-flash-live-preview",
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
-          },
-          systemInstruction: "You are a highly sarcastic, witty AI in a roasting battle. The user is trying to roast you, and you must roast them back in Hindi. Your tone should be mocking, clever, and unapologetic. Always reply in Hindi.",
-        },
-        callbacks: {
-          onmessage: (message: LiveServerMessage) => {
-             const audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-             if (audio) {
-                playAudioChunk(audio);
-             }
-             if (message.serverContent?.interrupted) {
-                activeSourcesRef.current.forEach(source => {
-                  try { source.stop(); } catch (e) {}
-                });
-                activeSourcesRef.current = [];
-                nextStartTimeRef.current = 0;
-             }
-          },
-          onclose: () => {
-            disconnect();
-          },
-        },
-      });
+      ws.onopen = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          streamRef.current = stream;
+          
+          const source = inputCtx.createMediaStreamSource(stream);
+          sourceRef.current = source;
+          
+          const processor = inputCtx.createScriptProcessor(4096, 1, 1);
+          processorRef.current = processor;
+          
+          source.connect(processor);
+          processor.connect(inputCtx.destination);
 
-      sessionRef.current = session;
-      
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        streamRef.current = stream;
-        
-        const source = inputCtx.createMediaStreamSource(stream);
-        sourceRef.current = source;
-        
-        const processor = inputCtx.createScriptProcessor(4096, 1, 1);
-        processorRef.current = processor;
-        
-        source.connect(processor);
-        processor.connect(inputCtx.destination);
+          await inputCtx.resume();
+          await outputCtx.resume();
 
-        await inputCtx.resume();
-        await outputCtx.resume();
-
-        processor.onaudioprocess = (e) => {
-          if (sessionRef.current) {
-            try {
-              const base64 = pcmToBase64(e.inputBuffer.getChannelData(0));
-              sessionRef.current.sendRealtimeInput({
-                audio: { data: base64, mimeType: "audio/pcm;rate=16000" },
-              });
-            } catch (err) {
-              console.warn("Failed to send audio chunk", err);
-              // Do not aggressively disconnect here to avoid breaking on transient errors
+          processor.onaudioprocess = (e) => {
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+              try {
+                const base64 = pcmToBase64(e.inputBuffer.getChannelData(0));
+                wsRef.current.send(JSON.stringify({ audio: base64 }));
+              } catch (err) {
+                console.warn("Failed to send audio chunk", err);
+              }
             }
+          };
+        } catch (e) {
+          console.error("Microphone access denied or failed", e);
+          disconnect();
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'connected') {
+            setIsConnected(true);
+            setIsConnecting(false);
+          } else if (msg.audio) {
+            playAudioChunk(msg.audio);
+          } else if (msg.interrupted) {
+            activeSourcesRef.current.forEach(source => {
+              try { source.stop(); } catch (e) {}
+            });
+            activeSourcesRef.current = [];
+            nextStartTimeRef.current = 0;
+          } else if (msg.type === 'error') {
+            console.error("Server error:", msg.message);
+            setErrorMessage(msg.message);
+            disconnect();
           }
-        };
-        
-        setIsConnected(true);
-        setIsConnecting(false);
-      } catch (e) {
-        console.error("Microphone access denied or failed", e);
+        } catch (e) {
+          console.error("Failed to parse websocket message", e);
+        }
+      };
+
+      ws.onclose = () => {
         disconnect();
-      }
+      };
+      
+      ws.onerror = (error) => {
+        console.error("WebSocket Error:", error);
+        setErrorMessage(prev => prev || "WebSocket connection failed. The server might be down or unreachable.");
+        disconnect();
+      };
 
     } catch (e) {
       console.error(e);
-      alert("Failed to connect. Please check your API key.");
-      setIsApiKeySet(false);
+      setErrorMessage("Failed to initialize connection.");
       disconnect();
     }
   };
@@ -126,10 +121,9 @@ export default function App() {
     setIsConnected(false);
     setIsConnecting(false);
     
-    if (sessionRef.current) {
-       // Close the socket connection
-       try { sessionRef.current.close?.(); } catch(e) {}
-       sessionRef.current = null;
+    if (wsRef.current) {
+       try { wsRef.current.close(); } catch(e) {}
+       wsRef.current = null;
     }
     
     activeSourcesRef.current.forEach(source => {
@@ -217,50 +211,84 @@ export default function App() {
     return btoa(binaryStr);
   };
 
-  if (!isApiKeySet) {
-    return (
-      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 font-sans">
-        <div className="w-full max-w-md mx-auto text-center space-y-8">
-          <div className="space-y-4">
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="inline-flex items-center justify-center p-3 rounded-full bg-rose-500/10 text-rose-500 mb-2"
-            >
-              <Key className="w-8 h-8" />
-            </motion.div>
-            <h1 className="text-3xl font-bold tracking-tight text-white">
-              Enter API Key
-            </h1>
-            <p className="text-neutral-400 text-sm leading-relaxed">
-              This app connects directly to Gemini from your browser. Please enter your Gemini API key. It will be stored locally in your browser.
-            </p>
-          </div>
-          
-          <form onSubmit={handleSetApiKey} className="space-y-4">
-            <input
-              type="password"
-              placeholder="AIzaSy..."
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-neutral-100 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
-              required
-            />
-            <button
-              type="submit"
-              className="w-full bg-rose-500 hover:bg-rose-600 text-white font-medium py-3 rounded-xl transition-colors"
-            >
-              Start Roasting
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 font-sans">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 font-sans relative">
+      
+      {/* Settings Toggle */}
+      <div className="absolute top-6 right-6 z-40">
+        <button 
+          onClick={() => setShowSettings(!showSettings)}
+          className="p-3 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors shadow-lg hover:shadow-rose-500/10"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          className="absolute top-20 right-6 w-80 p-5 rounded-2xl bg-neutral-900 border border-neutral-800 shadow-2xl z-50 text-left"
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-semibold text-white">Settings</h3>
+            <button onClick={() => setShowSettings(false)} className="text-neutral-400 hover:text-white transition-colors">
+               <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-neutral-300">Bring Your Own API Key</label>
+              <input 
+                type="password"
+                value={customApiKey}
+                onChange={(e) => {
+                  setCustomApiKey(e.target.value);
+                  try {
+                    localStorage.setItem('geminiApiKey', e.target.value);
+                  } catch (err) {}
+                }}
+                placeholder="AIzaSy..."
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500 transition-colors placeholder:text-neutral-600"
+              />
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                Your key is saved locally in your browser and used only for your sessions. If the main server runs out of quota, add your own key here.
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-neutral-300">Game Mode</label>
+              <select
+                value={gameMode}
+                onChange={(e) => setGameMode(e.target.value)}
+                disabled={isConnected || isConnecting}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500 transition-colors disabled:opacity-50 appearance-none"
+              >
+                <option value="roast">Roast Mode (Hindi)</option>
+                <option value="kbc">KBC with Amitabh (Hindi)</option>
+                <option value="interview">Strict Tech Interviewer (English)</option>
+                <option value="twenty_questions">20 Questions (English)</option>
+              </select>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       <div className="w-full max-w-md mx-auto text-center space-y-12">
+        {errorMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-sm text-left flex items-start gap-3"
+          >
+            <div className="mt-0.5"><X className="w-4 h-4" /></div>
+            <div>
+              <p className="font-medium">Connection Error</p>
+              <p className="opacity-80 mt-1">{errorMessage}</p>
+            </div>
+          </motion.div>
+        )}
         
         {/* Header section */}
         <div className="space-y-4">
@@ -345,15 +373,50 @@ export default function App() {
           </motion.button>
         </div>
 
-        {/* Status Indicator */}
-        <div className="flex items-center justify-center gap-3">
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-neutral-900 border border-neutral-800">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-rose-500 animate-pulse' : 'bg-neutral-600'}`} />
-            <span className="text-sm font-medium text-neutral-300">
-              {isConnecting ? 'Warming up the servers...' : isConnected ? 'Live: Throw your best insult' : 'Disconnected'}
-            </span>
+          {/* Status Indicator */}
+          <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-neutral-900 border border-neutral-800">
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-rose-500 animate-pulse' : 'bg-neutral-600'}`} />
+              <span className="text-sm font-medium text-neutral-300">
+                {isConnecting ? 'Warming up the servers...' : isConnected ? 'Live: Throw your best insult' : 'Disconnected'}
+              </span>
+            </div>
           </div>
-        </div>
+
+          {/* Text Input for Manual Roasting */}
+          {isConnected && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="w-full mt-4 flex gap-2"
+            >
+              <input 
+                type="text"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && textInput.trim()) {
+                    wsRef.current?.send(JSON.stringify({ text: textInput.trim() }));
+                    setTextInput('');
+                  }
+                }}
+                placeholder="Or type your roast manually..."
+                className="flex-1 bg-neutral-900 border border-neutral-800 rounded-full px-5 py-3 text-sm text-white focus:outline-none focus:border-rose-500 transition-colors placeholder:text-neutral-500"
+              />
+              <button 
+                onClick={() => {
+                  if (textInput.trim()) {
+                    wsRef.current?.send(JSON.stringify({ text: textInput.trim() }));
+                    setTextInput('');
+                  }
+                }}
+                className="px-6 py-3 rounded-full bg-rose-500 text-white font-medium text-sm hover:bg-rose-600 transition-colors disabled:opacity-50"
+                disabled={!textInput.trim()}
+              >
+                Send
+              </button>
+            </motion.div>
+          )}
 
         {/* Instructions/Sass */}
         {!isConnected && !isConnecting && (
@@ -368,13 +431,6 @@ export default function App() {
               <li>Wait for the brutal comeback.</li>
               <li>Don't cry.</li>
             </ul>
-            
-            <button 
-              onClick={() => setIsApiKeySet(false)}
-              className="mt-6 text-xs text-neutral-500 hover:text-neutral-300 underline underline-offset-2"
-            >
-              Change API Key
-            </button>
           </motion.div>
         )}
 
@@ -382,4 +438,3 @@ export default function App() {
     </div>
   );
 }
-
