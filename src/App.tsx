@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Flame, Skull } from 'lucide-react';
+import { Mic, MicOff, Flame, Skull, Key } from 'lucide-react';
 import { motion } from 'motion/react';
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 
 export default function App() {
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [isApiKeySet, setIsApiKeySet] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   
-  const wsRef = useRef<WebSocket | null>(null);
+  const sessionRef = useRef<any>(null);
   const inputAudioCtxRef = useRef<AudioContext | null>(null);
   const outputAudioCtxRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -15,15 +18,27 @@ export default function App() {
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
 
+  useEffect(() => {
+    if (apiKey) {
+      localStorage.setItem('gemini_api_key', apiKey);
+    }
+  }, [apiKey]);
+
+  const handleSetApiKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (apiKey.trim()) {
+      setIsApiKeySet(true);
+    }
+  };
+
   const connect = async () => {
+    if (!apiKey) return;
+    
     setIsConnecting(true);
     
     try {
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.host}/live`;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
+      const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+      
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       inputAudioCtxRef.current = inputCtx;
       
@@ -31,68 +46,78 @@ export default function App() {
       outputAudioCtxRef.current = outputCtx;
       nextStartTimeRef.current = 0;
 
-      ws.onopen = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          streamRef.current = stream;
-          
-          const source = inputCtx.createMediaStreamSource(stream);
-          sourceRef.current = source;
-          
-          const processor = inputCtx.createScriptProcessor(4096, 1, 1);
-          processorRef.current = processor;
-          
-          source.connect(processor);
-          processor.connect(inputCtx.destination);
+      const session = await ai.live.connect({
+        model: "gemini-3.1-flash-live-preview",
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
+          },
+          systemInstruction: "You are a highly sarcastic, witty AI in a roasting battle. The user is trying to roast you, and you must roast them back in Hindi. Your tone should be mocking, clever, and unapologetic. Always reply in Hindi.",
+        },
+        callbacks: {
+          onmessage: (message: LiveServerMessage) => {
+             const audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+             if (audio) {
+                playAudioChunk(audio);
+             }
+             if (message.serverContent?.interrupted) {
+                activeSourcesRef.current.forEach(source => {
+                  try { source.stop(); } catch (e) {}
+                });
+                activeSourcesRef.current = [];
+                nextStartTimeRef.current = 0;
+             }
+          },
+          onclose: () => {
+            disconnect();
+          },
+        },
+      });
 
-          await inputCtx.resume();
-          await outputCtx.resume();
-
-          processor.onaudioprocess = (e) => {
-            if (wsRef.current?.readyState === WebSocket.OPEN) {
-              const base64 = pcmToBase64(e.inputBuffer.getChannelData(0));
-              wsRef.current.send(JSON.stringify({ audio: base64 }));
-            }
-          };
-          
-          setIsConnected(true);
-          setIsConnecting(false);
-        } catch (e) {
-          console.error("Microphone access denied or failed", e);
-          disconnect();
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.audio) {
-            playAudioChunk(msg.audio);
-          }
-          if (msg.interrupted) {
-            activeSourcesRef.current.forEach(source => {
-              try { source.stop(); } catch (e) {}
-            });
-            activeSourcesRef.current = [];
-            nextStartTimeRef.current = 0;
-          }
-        } catch (err) {
-          console.error("Failed to parse message:", err);
-        }
-      };
-
-      ws.onclose = () => {
-        disconnect();
-      };
+      sessionRef.current = session;
       
-      ws.onerror = (err) => {
-        console.error("WebSocket error", err);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        
+        const source = inputCtx.createMediaStreamSource(stream);
+        sourceRef.current = source;
+        
+        const processor = inputCtx.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+        
+        source.connect(processor);
+        processor.connect(inputCtx.destination);
+
+        await inputCtx.resume();
+        await outputCtx.resume();
+
+        processor.onaudioprocess = (e) => {
+          if (sessionRef.current) {
+            try {
+              const base64 = pcmToBase64(e.inputBuffer.getChannelData(0));
+              sessionRef.current.sendRealtimeInput({
+                audio: { data: base64, mimeType: "audio/pcm;rate=16000" },
+              });
+            } catch (err) {
+              console.warn("Failed to send audio chunk", err);
+              // Do not aggressively disconnect here to avoid breaking on transient errors
+            }
+          }
+        };
+        
+        setIsConnected(true);
+        setIsConnecting(false);
+      } catch (e) {
+        console.error("Microphone access denied or failed", e);
         disconnect();
-      };
+      }
 
     } catch (e) {
       console.error(e);
-      alert("Failed to connect to the server.");
+      alert("Failed to connect. Please check your API key.");
+      setIsApiKeySet(false);
       disconnect();
     }
   };
@@ -101,9 +126,10 @@ export default function App() {
     setIsConnected(false);
     setIsConnecting(false);
     
-    if (wsRef.current) {
-       try { wsRef.current.close(); } catch(e) {}
-       wsRef.current = null;
+    if (sessionRef.current) {
+       // Close the socket connection
+       try { sessionRef.current.close?.(); } catch(e) {}
+       sessionRef.current = null;
     }
     
     activeSourcesRef.current.forEach(source => {
@@ -135,7 +161,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    return () => disconnect();
+    return () => {
+      disconnect();
+    };
   }, []);
 
   const playAudioChunk = (base64: string) => {
@@ -188,6 +216,47 @@ export default function App() {
     }
     return btoa(binaryStr);
   };
+
+  if (!isApiKeySet) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 font-sans">
+        <div className="w-full max-w-md mx-auto text-center space-y-8">
+          <div className="space-y-4">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="inline-flex items-center justify-center p-3 rounded-full bg-rose-500/10 text-rose-500 mb-2"
+            >
+              <Key className="w-8 h-8" />
+            </motion.div>
+            <h1 className="text-3xl font-bold tracking-tight text-white">
+              Enter API Key
+            </h1>
+            <p className="text-neutral-400 text-sm leading-relaxed">
+              This app connects directly to Gemini from your browser. Please enter your Gemini API key. It will be stored locally in your browser.
+            </p>
+          </div>
+          
+          <form onSubmit={handleSetApiKey} className="space-y-4">
+            <input
+              type="password"
+              placeholder="AIzaSy..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-neutral-100 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+              required
+            />
+            <button
+              type="submit"
+              className="w-full bg-rose-500 hover:bg-rose-600 text-white font-medium py-3 rounded-xl transition-colors"
+            >
+              Start Roasting
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 font-sans">
@@ -299,6 +368,13 @@ export default function App() {
               <li>Wait for the brutal comeback.</li>
               <li>Don't cry.</li>
             </ul>
+            
+            <button 
+              onClick={() => setIsApiKeySet(false)}
+              className="mt-6 text-xs text-neutral-500 hover:text-neutral-300 underline underline-offset-2"
+            >
+              Change API Key
+            </button>
           </motion.div>
         )}
 
