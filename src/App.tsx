@@ -5,7 +5,6 @@ import { motion } from 'motion/react';
 export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   const wsRef = useRef<WebSocket | null>(null);
   const inputAudioCtxRef = useRef<AudioContext | null>(null);
@@ -18,7 +17,6 @@ export default function App() {
 
   const connect = async () => {
     setIsConnecting(true);
-    setErrorMsg(null);
     
     try {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -59,13 +57,8 @@ export default function App() {
           
           setIsConnected(true);
           setIsConnecting(false);
-        } catch (e: any) {
+        } catch (e) {
           console.error("Microphone access denied or failed", e);
-          if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError' || e.message?.includes('Permission denied')) {
-            setErrorMsg("Microphone access denied. If you are viewing this in an iframe, please open the app in a new tab.");
-          } else {
-            setErrorMsg("Failed to access microphone: " + (e.message || "Unknown error"));
-          }
           disconnect();
         }
       };
@@ -73,11 +66,6 @@ export default function App() {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.error) {
-            alert(msg.error);
-            disconnect();
-            return;
-          }
           if (msg.audio) {
             playAudioChunk(msg.audio);
           }
@@ -272,19 +260,16 @@ export default function App() {
         </div>
 
         {/* Status Indicator */}
-        <div className="flex flex-col items-center justify-center gap-3">
+        <div className="flex items-center justify-center gap-3">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-neutral-900 border border-neutral-800">
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-rose-500 animate-pulse' : 'bg-neutral-600'}`} />
             <span className="text-sm font-medium text-neutral-300">
               {isConnecting ? 'Warming up the servers...' : isConnected ? 'Live: Throw your best insult' : 'Disconnected'}
             </span>
           </div>
-          {errorMsg && (
-            <div className="text-red-400 text-sm max-w-[80%] text-center mt-2 px-4 py-2 bg-red-950/30 rounded-lg border border-red-900/50">
-              {errorMsg}
-            </div>
-          )}
         </div>
+
+
 
       </div>
     </div>
