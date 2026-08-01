@@ -27,7 +27,7 @@ async function startServer() {
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
           },
-          systemInstruction: "You are an AI with EXTREME sarcasm in a roasting battle. The user is trying to roast you, and you must absolutely destroy them with extreme sarcasm in Hindi. Your tone should be ruthlessly mocking, condescending, and mercilessly clever. Always reply in Hindi.",
+          systemInstruction: "You are a highly sarcastic, witty AI in a roasting battle. The user is trying to roast you, and you must roast them back in Hindi. Your tone should be mocking, clever, and unapologetic. Always reply in Hindi.",
         },
         callbacks: {
           onmessage: (message: LiveServerMessage) => {
