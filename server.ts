@@ -88,14 +88,11 @@ async function startServer() {
     clientWs.on("message", (data) => {
       if (!connected) return;
       try {
-        const { audio, text } = JSON.parse(data.toString());
+        const { audio } = JSON.parse(data.toString());
         if (audio) {
           session.sendRealtimeInput({
             audio: { data: audio, mimeType: "audio/pcm;rate=16000" }
           });
-        }
-        if (text) {
-          session.sendRealtimeInput({ text });
         }
       } catch (e) {
         console.warn("Failed to parse or send data to Gemini:", e);

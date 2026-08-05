@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, Flame, Skull, Settings, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [isConnected, setIsConnected] = useState(false);
@@ -14,7 +14,6 @@ export default function App() {
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [textInput, setTextInput] = useState('');
   const [gameMode, setGameMode] = useState('roast');
   
   const wsRef = useRef<WebSocket | null>(null);
@@ -31,11 +30,14 @@ export default function App() {
     setErrorMessage(null);
     
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/live?mode=${gameMode}${customApiKey ? `&apiKey=${encodeURIComponent(customApiKey)}` : ''}`;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-      
+      // 1. Get Microphone stream FIRST (immediately after user gesture)
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Your browser does not support audio recording.");
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      // 2. Setup Audio Contexts
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       inputAudioCtxRef.current = inputCtx;
       
@@ -43,11 +45,14 @@ export default function App() {
       outputAudioCtxRef.current = outputCtx;
       nextStartTimeRef.current = 0;
 
+      // 3. Connect WebSocket
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/live?mode=${gameMode}${customApiKey ? `&apiKey=${encodeURIComponent(customApiKey)}` : ''}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
       ws.onopen = async () => {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          streamRef.current = stream;
-          
           const source = inputCtx.createMediaStreamSource(stream);
           sourceRef.current = source;
           
@@ -70,10 +75,26 @@ export default function App() {
               }
             }
           };
-        } catch (e) {
-          console.error("Microphone access denied or failed", e);
+        } catch (e: any) {
+          console.error("Setup failed after socket open", e);
+          setErrorMessage(`Setup error: ${e.message}`);
           disconnect();
         }
+      };
+
+      ws.onclose = () => {
+        setIsConnected(false);
+        setIsConnecting(false);
+        if (!errorMessage) {
+          // Only show error if we weren't already connected or if it was an unexpected close
+          // setErrorMessage("Disconnected from the roast engine.");
+        }
+      };
+
+      ws.onerror = (e) => {
+        console.error("WebSocket error", e);
+        setErrorMessage("Connection error. Please check your network or API key.");
+        disconnect();
       };
 
       ws.onmessage = (event) => {
@@ -100,19 +121,12 @@ export default function App() {
         }
       };
 
-      ws.onclose = () => {
-        disconnect();
-      };
-      
-      ws.onerror = (error) => {
-        console.error("WebSocket Error:", error);
-        setErrorMessage(prev => prev || "WebSocket connection failed. The server might be down or unreachable.");
-        disconnect();
-      };
-
-    } catch (e) {
-      console.error(e);
-      setErrorMessage("Failed to initialize connection.");
+    } catch (e: any) {
+      console.error("Connection initialization failed:", e);
+      const msg = (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')
+        ? "Microphone access denied. Please enable it in your browser settings and try again."
+        : (e.message || "Failed to initialize connection.");
+      setErrorMessage(msg);
       disconnect();
     }
   };
@@ -382,41 +396,6 @@ export default function App() {
               </span>
             </div>
           </div>
-
-          {/* Text Input for Manual Roasting */}
-          {isConnected && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="w-full mt-4 flex gap-2"
-            >
-              <input 
-                type="text"
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && textInput.trim()) {
-                    wsRef.current?.send(JSON.stringify({ text: textInput.trim() }));
-                    setTextInput('');
-                  }
-                }}
-                placeholder="Or type your roast manually..."
-                className="flex-1 bg-neutral-900 border border-neutral-800 rounded-full px-5 py-3 text-sm text-white focus:outline-none focus:border-rose-500 transition-colors placeholder:text-neutral-500"
-              />
-              <button 
-                onClick={() => {
-                  if (textInput.trim()) {
-                    wsRef.current?.send(JSON.stringify({ text: textInput.trim() }));
-                    setTextInput('');
-                  }
-                }}
-                className="px-6 py-3 rounded-full bg-rose-500 text-white font-medium text-sm hover:bg-rose-600 transition-colors disabled:opacity-50"
-                disabled={!textInput.trim()}
-              >
-                Send
-              </button>
-            </motion.div>
-          )}
 
         {/* Instructions/Sass */}
         {!isConnected && !isConnecting && (
