@@ -319,7 +319,7 @@ export default function App() {
             <Flame className="w-8 h-8" />
           </motion.div>
           <h1 className="text-4xl font-bold tracking-tight text-white">
-            RoastBot 9000
+            Rostpapa
           </h1>
           <p className="text-neutral-400 text-lg leading-relaxed">
             Think you can handle the heat? Talk to me and find out. (Hindi Mode)

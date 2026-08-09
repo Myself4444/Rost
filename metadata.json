@@ -1,5 +1,5 @@
 {
-  "name": "RoastBot 9000",
+  "name": "Rostpapa",
   "description": "A live roasting AI voice battle app.",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
