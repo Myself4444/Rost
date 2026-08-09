@@ -22,6 +22,7 @@ export default function App() {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mixerRef = useRef<GainNode | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
 
@@ -56,10 +57,14 @@ export default function App() {
           const source = inputCtx.createMediaStreamSource(stream);
           sourceRef.current = source;
           
+          const mixer = inputCtx.createGain();
+          mixerRef.current = mixer;
+
           const processor = inputCtx.createScriptProcessor(4096, 1, 1);
           processorRef.current = processor;
           
-          source.connect(processor);
+          source.connect(mixer);
+          mixer.connect(processor);
           processor.connect(inputCtx.destination);
 
           await inputCtx.resume();
@@ -122,9 +127,9 @@ export default function App() {
       };
 
     } catch (e: any) {
-      console.error("Connection initialization failed:", e);
-      const msg = (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')
-        ? "Microphone access denied. Please enable it in your browser settings and try again."
+      console.warn("Connection initialization failed (usually Mic Permission Denied):", e);
+      const msg = (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError' || e.message?.includes('Permission denied'))
+        ? "Microphone access denied. Please click 'Allow' in your browser URL bar settings."
         : (e.message || "Failed to initialize connection.");
       setErrorMessage(msg);
       disconnect();
@@ -228,8 +233,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 font-sans relative">
       
-      {/* Settings Toggle */}
-      <div className="absolute top-6 right-6 z-40">
+      {/* Top right actions */}
+      <div className="absolute top-6 right-6 z-40 flex items-center gap-3">
         <button 
           onClick={() => setShowSettings(!showSettings)}
           className="p-3 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors shadow-lg hover:shadow-rose-500/10"
@@ -396,22 +401,6 @@ export default function App() {
               </span>
             </div>
           </div>
-
-        {/* Instructions/Sass */}
-        {!isConnected && !isConnecting && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="p-6 rounded-2xl bg-neutral-900/50 border border-neutral-800 text-neutral-400 text-sm"
-          >
-            <p><strong>Rules of engagement:</strong></p>
-            <ul className="mt-2 space-y-1 text-left list-disc list-inside">
-              <li>Speak clearly in Hindi or English.</li>
-              <li>Wait for the brutal comeback.</li>
-              <li>Don't cry.</li>
-            </ul>
-          </motion.div>
-        )}
 
       </div>
     </div>
