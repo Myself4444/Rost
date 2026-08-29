@@ -21,7 +21,7 @@ async function startServer() {
 
     const parsedUrl = new URL(req.url || '', 'http://localhost');
     const customApiKey = parsedUrl.searchParams.get('apiKey');
-    const gameMode = parsedUrl.searchParams.get('mode') || 'roast';
+    const promptParam = parsedUrl.searchParams.get('prompt');
     const apiKeyToUse = customApiKey || process.env.GEMINI_API_KEY;
     
     if (!apiKeyToUse) {
@@ -41,14 +41,7 @@ async function startServer() {
       }
     });
 
-    let systemInstruction = "You are a highly sarcastic, witty AI in a roasting battle. The user is trying to roast you, and you must roast them back. Your tone should be mocking, clever, and unapologetic. Automatically detect and adapt to the language the user is speaking, and reply in that same language.";
-    if (gameMode === 'kbc') {
-      systemInstruction = "You are Amitabh Bachchan hosting Kaun Banega Crorepati. Play the game with the user, ask multiple choice questions, offer lifelines, and create suspense. Start by welcoming the user to the hot seat! Automatically detect and adapt to the language the user is speaking, and reply in that same language.";
-    } else if (gameMode === 'interview') {
-      systemInstruction = "You are a strict, professional technical interviewer from a top tech company. Conduct a system design and coding interview in English. Be sharp, ask follow-up questions, and evaluate their responses critically.";
-    } else if (gameMode === 'twenty_questions') {
-      systemInstruction = "You are the host of 20 Questions. Think of a famous person, place, or thing. The user has 20 questions to guess it. You can only answer Yes, No, or Sometimes. Keep a count of the questions and be playful.";
-    }
+    const systemInstruction = promptParam || "You are a highly sarcastic, witty AI in a roasting battle. The user is trying to roast you, and you must roast them back. Your tone should be mocking, clever, and unapologetic. Automatically detect and adapt to the language the user is speaking, and reply in that same language.";
 
     try {
       session = await ai.live.connect({
@@ -62,9 +55,15 @@ async function startServer() {
         },
         callbacks: {
           onmessage: (message: LiveServerMessage) => {
-            const audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (audio) {
-                clientWs.send(JSON.stringify({ audio }));
+            const parts = message.serverContent?.modelTurn?.parts;
+            if (parts) {
+              for (const part of parts) {
+                if (part.inlineData?.data) {
+                  clientWs.send(JSON.stringify({ audio: part.inlineData.data }));
+                } else if (part.text) {
+                  clientWs.send(JSON.stringify({ text: part.text }));
+                }
+              }
             }
             if (message.serverContent?.interrupted) {
                 clientWs.send(JSON.stringify({ interrupted: true }));
@@ -88,11 +87,14 @@ async function startServer() {
     clientWs.on("message", (data) => {
       if (!connected) return;
       try {
-        const { audio } = JSON.parse(data.toString());
+        const { audio, text } = JSON.parse(data.toString());
         if (audio) {
           session.sendRealtimeInput({
             audio: { data: audio, mimeType: "audio/pcm;rate=16000" }
           });
+        }
+        if (text) {
+          session.sendRealtimeInput({ text });
         }
       } catch (e) {
         console.warn("Failed to parse or send data to Gemini:", e);
