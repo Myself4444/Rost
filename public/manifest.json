@@ -1,0 +1,17 @@
+{
+  "name": "Roast Papa",
+  "short_name": "RoastPapa",
+  "description": "The AI that aggressively roasts you.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#e11d48",
+  "icons": [
+    {
+      "src": "/icon.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
