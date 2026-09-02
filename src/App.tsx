@@ -32,7 +32,9 @@ export default function App() {
   const [messages, setMessages] = useState<{sender: 'user'|'ai', text: string}[]>([]);
   const [inputText, setInputText] = useState('');
   const [activeLegalDoc, setActiveLegalDoc] = useState<'privacy' | 'terms' | 'contact' | null>(null);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(() => {
+    return localStorage.getItem('roastpapa_accepted_terms_v3') === 'true';
+  });
   const [isMuted, setIsMuted] = useState(false);
   const [isChatVisible, setIsChatVisible] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -80,7 +82,7 @@ export default function App() {
         // DIRECT CONNECTION (COSTS $0 BANDWIDTH)
         // ==========================================
         const ai = new GoogleGenAI({ apiKey: customApiKey });
-        const systemInstruction = "You are a highly sarcastic, witty AI in a roasting battle. The user is trying to roast you, and you must roast them back. Your tone should be mocking, clever, and unapologetic. Automatically detect and adapt to the language the user is speaking, and reply in that same language.";
+        const systemInstruction = "You are Roast Papa, a highly sarcastic, witty AI in a roasting battle. Your tone is mocking, clever, unapologetic, and full of swagger. Do NOT introduce yourself or say your name unless the user explicitly asks who you are or what your name is. If they just say hi, roast them for it. Automatically detect and adapt to the language the user is speaking, and reply in that same language.";
         
         const session = await ai.live.connect({
           model: "gemini-3.1-flash-live-preview",
@@ -392,51 +394,15 @@ export default function App() {
       
       {/* Top right actions */}
       <div className="absolute top-6 right-6 z-40 flex items-center gap-3">
-        {isConnected && (
-          <button 
-            onClick={() => setIsChatVisible(!isChatVisible)}
-            className={`p-3 rounded-full border transition-colors shadow-lg ${isChatVisible ? 'bg-rose-500/20 border-rose-500/50 text-rose-500 hover:bg-rose-500/30' : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'}`}
-            title={isChatVisible ? "Hide Chat" : "Show Chat"}
-          >
-            {isChatVisible ? <MessageSquareOff className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
-          </button>
-        )}
         <button 
           onClick={() => setShowSettings(!showSettings)}
           className="p-3 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors shadow-lg hover:shadow-rose-500/10"
         >
           <Settings className="w-5 h-5" />
         </button>
-        <div className="relative">
-          <button 
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-3 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors shadow-lg hover:shadow-rose-500/10"
-          >
-            <MoreVertical className="w-5 h-5" />
-          </button>
-          
-          <AnimatePresence>
-            {isMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setIsMenuOpen(false)} />
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                  className="absolute right-0 top-full mt-2 w-48 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl py-2 z-50 overflow-hidden"
-                >
-                  <button onClick={() => { setActiveLegalDoc('privacy'); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-neutral-300 hover:bg-neutral-800 hover:text-white transition-colors border-b border-neutral-800/50">Privacy Policy</button>
-                  <button onClick={() => { setActiveLegalDoc('terms'); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-neutral-300 hover:bg-neutral-800 hover:text-white transition-colors border-b border-neutral-800/50">Terms of Service</button>
-                  <button onClick={() => { setActiveLegalDoc('contact'); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-sm text-neutral-300 hover:bg-neutral-800 hover:text-white transition-colors">Contact Us</button>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </div>
       </div>
 
-      {/* Settings Panel */}
-      {showSettings && (
+      {/* Settings Panel */}{showSettings && (
         <motion.div 
           initial={{ opacity: 0, y: -10, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -516,44 +482,28 @@ export default function App() {
              RoastPapa
           </div>
 
-          {/* Chat History Area */}
-          <AnimatePresence>
-            {isChatVisible && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                className="flex-1 overflow-y-auto px-6 pt-24 pb-48 space-y-8 scroll-smooth" 
-                ref={messagesContainerRef}
-              >
-                {messages.map((m, i) => (
-                  <motion.div 
-                    key={i} 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    {m.sender === 'user' ? (
-                      <div className="bg-[#1e3a8a] text-white px-5 py-2.5 rounded-3xl text-base max-w-[85%]">
-                        {m.text}
-                      </div>
-                    ) : (
-                      <div className="max-w-[90%] space-y-3">
-                        <p className="text-white text-lg md:text-xl font-medium leading-relaxed">{m.text}</p>
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
-                <div ref={messagesEndRef} />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Chat History Area (Removed - Replaced by Transient Bubble) */}
 
           {/* Fixed Bottom Overlay */}
           <div className="absolute bottom-0 left-0 right-0 pt-20 pb-8 px-6 flex flex-col items-center justify-end bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none">
             
-            <div className={`relative flex justify-center items-center w-full transition-all duration-500 ${isChatVisible ? 'mb-10 h-32' : 'mb-24 h-64'}`}>
+            <AnimatePresence mode="wait">
+              {isChatVisible && messages.length > 0 && [...messages].reverse().find(m => m.sender === 'user') && (
+                <motion.div
+                  key={messages.filter(m => m.sender === 'user').length} // unique key forces animation on new message
+                  initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="mb-8 pointer-events-auto max-w-2xl w-full flex justify-start px-4 md:px-12 z-50"
+                >
+                  <div className="bg-rose-500/10 backdrop-blur-md text-white px-6 py-3 rounded-2xl text-sm font-medium shadow-2xl border border-rose-500/20 max-w-[85%] text-left">
+                    {[...messages].reverse().find(m => m.sender === 'user')?.text}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className={`relative flex justify-center items-center w-full transition-all duration-500 ${isChatVisible ? 'mb-4 h-16' : 'mb-24 h-64'}`}>
               {/* Animated rings */}
               <motion.div
                 initial={{ opacity: 0 }}
@@ -573,7 +523,7 @@ export default function App() {
                       delay: i * 0.4,
                       ease: "easeOut",
                     }}
-                    className={`absolute rounded-full border border-rose-500/50 ${isChatVisible ? 'w-24 h-24' : 'w-40 h-40'}`}
+                    className={`absolute rounded-full border border-rose-500/50 ${isChatVisible ? 'w-14 h-14' : 'w-40 h-40'}`}
                   />
                 ))}
               </motion.div>
@@ -591,58 +541,65 @@ export default function App() {
                   ]
                 }}
                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                className={`relative z-10 rounded-full flex flex-col items-center justify-center bg-rose-500 text-white transition-all duration-500 pointer-events-auto ${isChatVisible ? 'w-24 h-24' : 'w-40 h-40'}`}
+                className={`relative z-10 rounded-full flex flex-col items-center justify-center bg-rose-500 text-white transition-all duration-500 pointer-events-auto ${isChatVisible ? 'w-14 h-14' : 'w-40 h-40'}`}
               >
-                <Skull className={isChatVisible ? "w-8 h-8" : "w-16 h-16"} />
+                <Skull className={isChatVisible ? "w-6 h-6" : "w-16 h-16"} />
               </motion.button>
             </div>
 
-            {/* Floating Action Bar */}
-            <div className={`flex items-center gap-2 pointer-events-auto bg-[#202124] rounded-full p-2 transition-all duration-500 ${isChatVisible ? 'w-full max-w-md' : 'w-auto px-4'}`}>
-              
-              <AnimatePresence>
-                {isChatVisible && (
-                  <motion.form 
-                    initial={{ width: 0, opacity: 0 }}
-                    animate={{ width: "100%", opacity: 1 }}
-                    exit={{ width: 0, opacity: 0 }}
-                    onSubmit={sendTextMessage} 
-                    className="flex-1 flex items-center px-4 h-14 overflow-hidden"
-                  >
-                    <input
-                      type="text"
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      placeholder="Message RoastPapa..."
-                      className="bg-transparent text-white focus:outline-none w-full text-base min-w-[150px]"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!inputText.trim()}
-                      className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center text-white hover:bg-neutral-700 disabled:opacity-50 shrink-0 ml-2"
-                    >
-                      <Flame className="w-4 h-4" />
-                    </button>
-                  </motion.form>
-                )}
-              </AnimatePresence>
+            {/* Floating Actions */}
+            <div className="flex items-center justify-center pointer-events-auto">
+              <div className={`flex items-center gap-2 bg-[#202124]/90 backdrop-blur-md border border-white/10 rounded-full p-2 transition-all duration-500 shadow-2xl ${isChatVisible ? 'w-full max-w-md' : 'w-auto'}`}>
+                
+                {/* Chat Toggle (or Close when open) */}
+                <button
+                  type="button"
+                  onClick={() => setIsChatVisible(!isChatVisible)}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${isChatVisible ? 'bg-neutral-800 text-neutral-400 hover:text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
+                  title={isChatVisible ? "Hide Chat" : "Show Chat"}
+                >
+                  {isChatVisible ? <MessageSquareOff className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
+                </button>
 
-              {isChatVisible && <div className="w-px h-6 bg-neutral-700 mx-1 shrink-0" />}
-              
-              <div className="flex items-center gap-2">
+                <AnimatePresence mode="wait">
+                  {isChatVisible && (
+                    <motion.form 
+                      initial={{ width: 0, opacity: 0 }}
+                      animate={{ width: "100%", opacity: 1 }}
+                      exit={{ width: 0, opacity: 0 }}
+                      onSubmit={sendTextMessage} 
+                      className="flex-1 flex items-center h-12 overflow-hidden"
+                    >
+                      <input
+                        type="text"
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        placeholder="Message RoastPapa..."
+                        className="bg-transparent text-white focus:outline-none w-full text-sm min-w-0 px-2"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!inputText.trim()}
+                        className="w-10 h-10 rounded-full bg-rose-600 flex items-center justify-center text-white hover:bg-rose-500 disabled:opacity-50 shrink-0 ml-2"
+                      >
+                        <Flame className="w-4 h-4" />
+                      </button>
+                    </motion.form>
+                  )}
+                </AnimatePresence>
+
+                {isChatVisible && (
+                  <div className="w-px h-6 bg-neutral-700 mx-1 shrink-0" />
+                )}
+
+                {/* Mute Mic */}
                 <button
                   type="button"
                   onClick={() => setIsMuted(!isMuted)}
-                  className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-colors ${isMuted ? 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/20' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${isMuted ? 'bg-rose-500/20 text-rose-500' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
                   title={isMuted ? "Unmute Mic" : "Mute Mic"}
                 >
-                  {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-                </button>
-                <button
-                  onClick={disconnect}
-                  className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center hover:bg-neutral-200 shrink-0"
-                >
-                  <X className="w-6 h-6" />
+                  {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                 </button>
               </div>
             </div>
@@ -721,7 +678,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4"
             onClick={() => setActiveLegalDoc(null)}
           >
             <motion.div
@@ -744,27 +701,81 @@ export default function App() {
               <div className="text-sm text-neutral-300 space-y-4 leading-relaxed">
                 {activeLegalDoc === 'privacy' && (
                   <>
-                    <p>Last updated: {new Date().toLocaleDateString()}</p>
-                    <p>At RoastPapa AI, we take your privacy seriously. We do not store your voice data permanently. All audio is processed in real-time and discarded after the session.</p>
-                    <p>If you use a custom API key, it is stored locally in your browser and is never transmitted to our servers.</p>
-                    <p>Third-party vendors, including Google, use cookies to serve ads based on a user's prior visits to your website or other websites.</p>
+                    <p className="font-semibold text-white">Last updated: {new Date().toLocaleDateString()}</p>
+                    <p>At RoastPapa AI, we take your privacy and data security extremely seriously. This Privacy Policy outlines how we handle your data.</p>
+                    <p className="font-semibold text-white mt-4">1. No Permanent Audio Storage</p>
+                    <p>Your privacy is our priority. We <strong>do not record, save, or permanently store</strong> your voice data or audio on our servers. All audio is processed ephemerally in real-time through the Google Gemini API to generate the AI responses, and is immediately discarded after the session ends.</p>
+                    <p className="font-semibold text-white mt-4">2. Local Storage and API Keys</p>
+                    <p>If you configure a custom Gemini API key in the app settings, that key is stored <strong>locally in your browser's secure storage (localStorage)</strong>. It is never transmitted to our servers, databases, or third parties (other than directly to Google's API for authentication). You are solely responsible for keeping your API key secure.</p>
+                    <p className="font-semibold text-white mt-4">3. Cookies and Analytics</p>
+                    <p>We do not use tracking cookies to sell your personal data. We may use standard necessary cookies (e.g., to remember that you accepted these terms) to ensure the app functions properly. Third-party vendors may use cookies to serve ads based on your prior visits.</p>
+                    <p className="font-semibold text-white mt-4">4. Compliance</p>
+                    <p>By using the app, you consent to this ephemeral processing of your voice data. We do not sell, rent, or trade any personal information to third parties.</p>
                   </>
                 )}
                 {activeLegalDoc === 'terms' && (
                   <>
-                    <p>Last updated: {new Date().toLocaleDateString()}</p>
-                    <p>By using RoastPapa AI, you agree to these terms. This app is for entertainment purposes only.</p>
-                    <p>The roasts generated by the AI are fictional and meant for comedic value. Do not take them seriously. You agree not to use the app to generate harmful, illegal, or genuinely harassing content.</p>
-                    <p>We reserve the right to modify or terminate the service at any time without notice.</p>
+                    <p className="font-semibold text-white">Last updated: {new Date().toLocaleDateString()}</p>
+                    <p>By accessing or using RoastPapa AI, you agree to be bound by these Terms of Service. If you do not agree with any part of these terms, you may not use the application.</p>
+                    <p className="font-semibold text-white mt-4">1. Entertainment Purposes Only</p>
+                    <p>RoastPapa AI is a novelty application designed strictly for comedic and entertainment purposes. The "roasts," insults, and comments generated by the AI are fictional, procedurally generated responses meant for humor.</p>
+                    <p className="font-semibold text-white mt-4">2. Limitation of Liability and Emotional Distress</p>
+                    <p>By using this service, you explicitly acknowledge that the AI is instructed to be sarcastic, critical, and "mean" in a comedic context. <strong>You agree not to take the AI's responses seriously.</strong> The developers, creators, and hosts of RoastPapa AI hold zero liability for any emotional distress, offense, damages, or harm resulting from your interaction with the AI. You use the service entirely at your own risk.</p>
+                    <p className="font-semibold text-white mt-4">3. Generative AI Unpredictability</p>
+                    <p>Because the app relies on large language models (LLMs) to generate real-time responses, we cannot guarantee the exact nature of every response. While safeguards are in place, the AI may occasionally produce unpredictable or inappropriate content. You agree to hold the developers harmless for any such occurrences.</p>
+                    <p className="font-semibold text-white mt-4">4. Acceptable Use</p>
+                    <p>You agree not to use the app to generate genuinely harmful, illegal, or harassing content against real individuals. You also agree not to abuse the API connections or attempt to bypass security measures.</p>
+                    <p className="font-semibold text-white mt-4">5. Modifications</p>
+                    <p>We reserve the right to modify, suspend, or terminate the service at any time without notice or liability.</p>
                   </>
                 )}
                 {activeLegalDoc === 'contact' && (
                   <>
-                    <p>Have questions or feedback? Want to sponsor the app?</p>
-                    <p>Email us at: <strong>contact@roastpapa.example.com</strong></p>
+                    <p>Have questions, feedback, or legal inquiries?</p>
+                    <p>Email us at: <strong>contact@roastpapa.com</strong></p>
                     <p>Follow us on social media for updates and hilarious roasts!</p>
                   </>
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* First-Time Welcome/Accept Modal */}
+      <AnimatePresence>
+        {!hasAcceptedTerms && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 w-full max-w-md shadow-2xl flex flex-col items-center text-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mb-6">
+                <Flame className="w-8 h-8" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Welcome to RoastPapa</h2>
+              <p className="text-neutral-400 text-sm mb-8 leading-relaxed">
+                Before we begin, you need to know: this AI is programmed to roast you. It will be sarcastic, it will be mean, and it will mock you. By clicking "I Accept", you agree to our full Privacy Policy and Terms of Service.
+              </p>
+
+              <button
+                onClick={() => {
+                  localStorage.setItem('roastpapa_accepted_terms_v3', 'true');
+                  setHasAcceptedTerms(true);
+                }}
+                className="w-full py-4 rounded-xl font-bold text-white bg-rose-600 hover:bg-rose-500 transition-colors shadow-lg shadow-rose-500/20 active:scale-95"
+              >
+                I Accept & Understand
+              </button>
+              
+              <div className="mt-6 flex items-center justify-center gap-4 text-xs text-neutral-500">
+                <button onClick={() => setActiveLegalDoc('privacy')} className="hover:text-neutral-300 underline underline-offset-2">Privacy Policy</button>
+                <button onClick={() => setActiveLegalDoc('terms')} className="hover:text-neutral-300 underline underline-offset-2">Terms of Service</button>
               </div>
             </motion.div>
           </motion.div>

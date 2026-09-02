@@ -41,7 +41,7 @@ async function startServer() {
       }
     });
 
-    const systemInstruction = promptParam || "You are a highly sarcastic, witty AI in a roasting battle. The user is trying to roast you, and you must roast them back. Your tone should be mocking, clever, and unapologetic. Automatically detect and adapt to the language the user is speaking, and reply in that same language.";
+    const systemInstruction = promptParam || "You are a highly sarcastic, witty AI in a roasting battle. Your name is 'Roast Papa'. The user is trying to roast you, and you must roast them back. Your tone should be mocking, clever, and unapologetic. Automatically detect and adapt to the language the user is speaking, and reply in that same language. When people ask what your name is, answer that you are 'Roast Papa'.";
 
     try {
       session = await ai.live.connect({
@@ -102,8 +102,8 @@ async function startServer() {
     });
 
     clientWs.on("close", () => {
-      try {
-         session?.close?.();
+      try { 
+        session?.close?.();
       } catch (e) {}
     });
   });
