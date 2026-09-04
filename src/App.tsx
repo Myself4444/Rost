@@ -418,14 +418,16 @@ export default function App() {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <label className="text-sm font-medium text-neutral-300">Bring Your Own API Key</label>
-                <a 
-                  href="https://aistudio.google.com/app/apikey" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-xs text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1"
-                >
-                  Get a key <ExternalLink className="w-3 h-3" />
-                </a>
+                {!customApiKey && (
+                  <a 
+                    href="https://aistudio.google.com/app/apikey" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-xs text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1"
+                  >
+                    Get a key <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
               </div>
               {customApiKey && !isEditingKey ? (
                 <div className="flex items-center justify-between bg-neutral-950 border border-green-500/30 rounded-lg px-4 py-2.5">
@@ -433,39 +435,64 @@ export default function App() {
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                     API Key Saved
                   </span>
-                  {!hasValidKey ? (
-                    <button 
-                      onClick={() => setIsEditingKey(true)}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(customApiKey)}
                       className="text-xs text-neutral-400 hover:text-white transition-colors uppercase font-semibold tracking-wider"
+                      title="Copy Key"
                     >
-                      Edit
+                      Copy
                     </button>
-                  ) : (
-                    <span className="text-xs text-neutral-600 uppercase font-semibold tracking-wider cursor-not-allowed" title="API Key is locked after successful connection">
-                      Locked
-                    </span>
-                  )}
+                    {!hasValidKey ? (
+                      <button 
+                        onClick={() => setIsEditingKey(true)}
+                        className="text-xs text-neutral-400 hover:text-white transition-colors uppercase font-semibold tracking-wider"
+                      >
+                        Edit
+                      </button>
+                    ) : (
+                      <span className="text-xs text-neutral-600 uppercase font-semibold tracking-wider cursor-not-allowed" title="API Key is locked after successful connection">
+                        Locked
+                      </span>
+                    )}
+                  </div>
                 </div>
               ) : (
-                <input 
-                  type="password"
-                  value={customApiKey}
-                  onChange={(e) => {
-                    setCustomApiKey(e.target.value);
-                    try {
-                      localStorage.setItem('geminiApiKey', e.target.value);
-                    } catch (err) {}
-                  }}
-                  onBlur={() => {
-                    if (customApiKey) setIsEditingKey(false);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && customApiKey) setIsEditingKey(false);
-                  }}
-                  autoFocus={isEditingKey && !!customApiKey}
-                  placeholder="AIzaSy..."
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500 transition-colors placeholder:text-neutral-600"
-                />
+                <div className="flex flex-col gap-2">
+                  <input 
+                    type="password"
+                    value={customApiKey}
+                    onChange={(e) => {
+                      setCustomApiKey(e.target.value);
+                      try {
+                        localStorage.setItem('geminiApiKey', e.target.value);
+                      } catch (err) {}
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && customApiKey) {
+                        setIsEditingKey(false);
+                        setShowSettings(false);
+                        if (!isConnected) connect();
+                      }
+                    }}
+                    autoFocus={isEditingKey && !!customApiKey}
+                    placeholder="AIzaSy..."
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500 transition-colors placeholder:text-neutral-600"
+                  />
+                  {customApiKey && (
+                    <button
+                      onClick={() => {
+                        setIsEditingKey(false);
+                        setShowSettings(false);
+                        if (!isConnected) connect();
+                      }}
+                      className="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors shadow-lg shadow-rose-500/20 active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <Flame className="w-4 h-4" />
+                      Save & Start Roasting
+                    </button>
+                  )}
+                </div>
               )}
               <p className="text-xs text-neutral-500 leading-relaxed">
                 Your key is saved locally in your browser and used only for your sessions. If the main server runs out of quota, add your own key here.
