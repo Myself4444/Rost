@@ -645,8 +645,9 @@ export default function App() {
       {isConnected ? (
         <div className="flex-1 flex flex-col relative w-full max-w-3xl mx-auto h-full">
           {/* Top header spacing */}
-          <div className="absolute top-6 left-6 z-40 text-lg font-semibold tracking-wide text-neutral-400 flex items-center gap-2">
-             <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+          <div className="absolute top-6 left-6 z-40 text-lg font-semibold tracking-wide text-neutral-400 flex items-center gap-2"> 
+             <img src="/logo-v2.jpg" alt="RoastPapa Logo" className="w-8 h-8 rounded-full object-cover border border-neutral-800 shadow-md" />
+             <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse ml-1" />
              RoastPapa
           </div>
 
@@ -831,11 +832,11 @@ export default function App() {
           {/* Header section */}
           <div className="space-y-4">
             <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
+              initial={{ scale: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="inline-flex items-center justify-center p-3 rounded-full bg-rose-500/10 text-rose-500 mb-2"
+              className="mb-4"
             >
-              <Flame className="w-8 h-8" />
+              <img src="/logo-v2.jpg" alt="RoastPapa Logo" className="w-20 h-20 rounded-3xl object-cover shadow-2xl shadow-rose-500/20 border border-neutral-800 mx-auto" />
             </motion.div>
             <h1 className="text-4xl font-bold tracking-tight text-white">
               RoastPapa
@@ -973,8 +974,8 @@ export default function App() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 w-full max-w-md shadow-2xl flex flex-col items-center text-center"
             >
-              <div className="w-16 h-16 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mb-6">
-                <Flame className="w-8 h-8" />
+              <div className="mb-6">
+                <img src="/logo-v2.jpg" alt="RoastPapa Logo" className="w-16 h-16 rounded-2xl object-cover shadow-lg border border-neutral-800" />
               </div>
               <h2 className="text-2xl font-bold text-white mb-2">Welcome to RoastPapa</h2>
               <p className="text-neutral-400 text-sm mb-8 leading-relaxed">
