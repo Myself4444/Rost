@@ -1,6 +1,6 @@
 {
   "name": "RoastPapa",
   "description": "A live roasting AI voice battle app.",
-  "requestFramePermissions": ["microphone"],
+  "requestFramePermissions": ["microphone", "camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

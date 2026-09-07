@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
-import { Mic, MicOff, Flame, Skull, Settings, X, ExternalLink, MoreVertical, MessageSquare, MessageSquareOff } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Flame, Skull, Settings, X, ExternalLink, MoreVertical, MessageSquare, MessageSquareOff, HelpCircle, SwitchCamera } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -52,6 +52,107 @@ export default function App() {
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
 
+  
+  const [isVideoEnabled, setIsVideoEnabled] = useState(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoIntervalRef = useRef<number | null>(null);
+
+  const sendVideoFrame = () => {
+    if (!videoRef.current || !videoCanvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = videoCanvasRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+    
+    const maxDim = 512;
+    let w = video.videoWidth;
+    let h = video.videoHeight;
+    if (w > maxDim || h > maxDim) {
+      if (w > h) {
+        h = Math.round((h * maxDim) / w);
+        w = maxDim;
+      } else {
+        w = Math.round((w * maxDim) / h);
+        h = maxDim;
+      }
+    }
+    
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.drawImage(video, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    const base64 = dataUrl.split(',')[1];
+    
+    try {
+      if (sessionRef.current) {
+        sessionRef.current.sendRealtimeInput([{
+          mimeType: 'image/jpeg',
+          data: base64
+        }]);
+      } else if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ video: base64 }));
+      }
+    } catch (err) {}
+  };
+
+  
+  const flipCamera = async () => {
+    const nextMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(nextMode);
+    
+    // If video is already running, we need to restart the stream with the new camera
+    if (isVideoEnabled) {
+      if (videoStreamRef.current) {
+        videoStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: nextMode } });
+        videoStreamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        console.error("Failed to flip camera", err);
+      }
+    }
+  };
+
+  const toggleVideo = async () => {
+    if (isVideoEnabled) {
+      if (videoStreamRef.current) {
+        videoStreamRef.current.getTracks().forEach(t => t.stop());
+        videoStreamRef.current = null;
+      }
+      if (videoIntervalRef.current) {
+        window.clearInterval(videoIntervalRef.current);
+        videoIntervalRef.current = null;
+      }
+      setIsVideoEnabled(false);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode } });
+        videoStreamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        setIsVideoEnabled(true);
+        
+        if (isConnected) {
+          videoIntervalRef.current = window.setInterval(sendVideoFrame, 1000);
+        }
+      } catch (err) {
+        console.error("Failed to get video", err);
+      }
+    }
+  };
+
+
   const connect = async () => {
     setIsConnecting(true);
     setErrorMessage(null);
@@ -82,7 +183,7 @@ export default function App() {
         // DIRECT CONNECTION (COSTS $0 BANDWIDTH)
         // ==========================================
         const ai = new GoogleGenAI({ apiKey: customApiKey });
-        const systemInstruction = "You are Roast Papa, a highly sarcastic, witty AI in a roasting battle. Your tone is mocking, clever, unapologetic, and full of swagger. Do NOT introduce yourself or say your name unless the user explicitly asks who you are or what your name is. If they just say hi, roast them for it. Automatically detect and adapt to the language the user is speaking, and reply in that same language.";
+        const systemInstruction = "You are RoastPapa. Your single purpose is to brutally roast the user based on what they say and what you see. You are ruthless, edgy, and completely unapologetic. Do NOT act like a helpful AI assistant. Do NOT offer advice. If they say hi, mock them for having nothing better to say. If they show you their face or room on camera, destroy their fashion choices or life decisions. Never break character. Always respond in the language they speak to you.";
         
         const session = await ai.live.connect({
           model: "gemini-3.1-flash-live-preview",
@@ -121,7 +222,13 @@ export default function App() {
               }
             },
             onclose: () => {
-              setIsConnected(false);
+              
+    if (videoIntervalRef.current) {
+      window.clearInterval(videoIntervalRef.current);
+      videoIntervalRef.current = null;
+    }
+
+    setIsConnected(false);
               setIsConnecting(false);
             }
           }
@@ -143,9 +250,15 @@ export default function App() {
         
         source.connect(mixer);
         mixer.connect(processor);
+        
         processor.connect(inputCtx.destination);
         await inputCtx.resume();
         await outputCtx.resume();
+
+        if (isVideoEnabled && videoStreamRef.current) {
+          videoIntervalRef.current = window.setInterval(sendVideoFrame, 1000);
+        }
+
 
         processor.onaudioprocess = (e) => {
            try {
@@ -202,7 +315,13 @@ export default function App() {
         };
 
         ws.onclose = () => {
-          setIsConnected(false);
+          
+    if (videoIntervalRef.current) {
+      window.clearInterval(videoIntervalRef.current);
+      videoIntervalRef.current = null;
+    }
+
+    setIsConnected(false);
           setIsConnecting(false);
         };
 
@@ -259,6 +378,12 @@ export default function App() {
   };
 
   const disconnect = () => {
+    
+    if (videoIntervalRef.current) {
+      window.clearInterval(videoIntervalRef.current);
+      videoIntervalRef.current = null;
+    }
+
     setIsConnected(false);
     setIsConnecting(false);
     setMessages([]);
@@ -391,7 +516,9 @@ export default function App() {
 
   return (
     <div className={isConnected ? "fixed inset-0 bg-black text-neutral-100 flex flex-col font-sans overflow-hidden" : "min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-6 selection:bg-rose-500/30 font-sans relative"}>
-      
+      <canvas ref={videoCanvasRef} className="hidden" />
+<canvas ref={videoCanvasRef} className="hidden" />
+
       {/* Top right actions */}
       <div className="absolute top-6 right-6 z-40 flex items-center gap-3">
         <button 
@@ -406,39 +533,39 @@ export default function App() {
         <motion.div 
           initial={{ opacity: 0, y: -10, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          className="absolute top-20 right-6 w-80 p-5 rounded-2xl bg-neutral-900 border border-neutral-800 shadow-2xl z-50 text-left"
+          className="absolute top-20 right-6 w-64 p-4 rounded-xl bg-neutral-900 border border-neutral-800 shadow-2xl z-50 text-left"
         >
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold text-white">Settings</h3>
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-sm font-semibold text-white">Settings</h3>
             <button onClick={() => setShowSettings(false)} className="text-neutral-400 hover:text-white transition-colors">
-               <X className="w-5 h-5" />
+               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="space-y-4">
-            <div className="space-y-3">
+          <div className="space-y-3">
+            <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <label className="text-sm font-medium text-neutral-300">Bring Your Own API Key</label>
+                <label className="text-xs font-medium text-neutral-300">API Key</label>
                 {!customApiKey && (
                   <a 
                     href="https://aistudio.google.com/app/apikey" 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="text-xs text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1"
+                    className="text-[10px] text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1"
                   >
-                    Get a key <ExternalLink className="w-3 h-3" />
+                    Get key <ExternalLink className="w-2.5 h-2.5" />
                   </a>
                 )}
               </div>
               {customApiKey && !isEditingKey ? (
-                <div className="flex items-center justify-between bg-neutral-950 border border-green-500/30 rounded-lg px-4 py-2.5">
-                  <span className="text-sm text-green-400 flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    API Key Saved
+                <div className="flex items-center justify-between bg-neutral-950 border border-green-500/30 rounded-md px-3 py-2">
+                  <span className="text-xs text-green-400 flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                    Saved
                   </span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => navigator.clipboard.writeText(customApiKey)}
-                      className="text-xs text-neutral-400 hover:text-white transition-colors uppercase font-semibold tracking-wider"
+                      className="text-[10px] text-neutral-400 hover:text-white transition-colors uppercase font-semibold"
                       title="Copy Key"
                     >
                       Copy
@@ -446,12 +573,12 @@ export default function App() {
                     {!hasValidKey ? (
                       <button 
                         onClick={() => setIsEditingKey(true)}
-                        className="text-xs text-neutral-400 hover:text-white transition-colors uppercase font-semibold tracking-wider"
+                        className="text-[10px] text-neutral-400 hover:text-white transition-colors uppercase font-semibold"
                       >
                         Edit
                       </button>
                     ) : (
-                      <span className="text-xs text-neutral-600 uppercase font-semibold tracking-wider cursor-not-allowed" title="API Key is locked after successful connection">
+                      <span className="text-[10px] text-neutral-600 uppercase font-semibold cursor-not-allowed" title="Locked after connection">
                         Locked
                       </span>
                     )}
@@ -477,7 +604,7 @@ export default function App() {
                     }}
                     autoFocus={isEditingKey && !!customApiKey}
                     placeholder="AIzaSy..."
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-rose-500 transition-colors placeholder:text-neutral-600"
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 transition-colors placeholder:text-neutral-600"
                   />
                   {customApiKey && (
                     <button
@@ -486,29 +613,29 @@ export default function App() {
                         setShowSettings(false);
                         if (!isConnected) connect();
                       }}
-                      className="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors shadow-lg shadow-rose-500/20 active:scale-95 flex items-center justify-center gap-2"
+                      className="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2 rounded-md text-xs transition-colors active:scale-95 flex items-center justify-center gap-1.5"
                     >
-                      <Flame className="w-4 h-4" />
-                      Save & Start Roasting
+                      <Flame className="w-3.5 h-3.5" />
+                      Save & Start
                     </button>
                   )}
                 </div>
               )}
-              <p className="text-xs text-neutral-500 leading-relaxed">
-                Your key is saved locally in your browser and used only for your sessions. If the main server runs out of quota, add your own key here.
+              <p className="text-[10px] text-neutral-500 text-center mb-3">
+                Your key is saved locally.
               </p>
-              
-              <div className="pt-4 border-t border-neutral-800 mt-2">
+              <div className="bg-[#25D366]/10 border border-[#25D366]/20 rounded-lg p-3 text-center mt-2">
+                <p className="text-xs text-neutral-300 mb-2 font-medium">Don't know how to get a key?</p>
                 <a 
                   href="https://whatsapp.com/channel/0029ValD8l48v0mYqE6y4b2y" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="w-full bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                  className="w-full bg-[#25D366] hover:bg-[#25D366]/90 text-black font-bold py-2 rounded-md text-xs transition-colors flex items-center justify-center gap-1.5 shadow-lg shadow-[#25D366]/20"
                 >
-                  <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
                     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
                   </svg>
-                  Join WhatsApp Community
+                  Join to get Key Guide
                 </a>
               </div>
             </div>
@@ -582,9 +709,23 @@ export default function App() {
                   ]
                 }}
                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                className={`relative z-10 rounded-full flex flex-col items-center justify-center bg-rose-500 text-white transition-all duration-500 pointer-events-auto ${isChatVisible ? 'w-14 h-14' : 'w-40 h-40'}`}
+                className={`relative z-10 rounded-full flex flex-col items-center justify-center text-white transition-all duration-500 pointer-events-auto overflow-hidden shadow-xl ${isVideoEnabled ? 'bg-black' : 'bg-rose-500'} ${isChatVisible ? 'w-14 h-14' : isVideoEnabled ? 'w-72 h-72 sm:w-80 sm:h-80 md:w-96 md:h-96' : 'w-48 h-48'}`}
               >
-                <Skull className={isChatVisible ? "w-6 h-6" : "w-16 h-16"} />
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline 
+                  muted 
+                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${facingMode === 'user' ? 'transform -scale-x-100' : ''} ${isVideoEnabled ? 'opacity-100' : 'opacity-0 hidden'}`} 
+                />
+                {!isVideoEnabled && (
+                  <Skull className={isChatVisible ? "w-6 h-6" : "w-20 h-20"} />
+                )}
+                {isVideoEnabled && (
+                  <div className="absolute inset-0 bg-black/20 hover:bg-black/50 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                    <span className="text-xs font-bold uppercase tracking-widest text-white">Stop</span>
+                  </div>
+                )}
               </motion.button>
             </div>
 
@@ -632,6 +773,31 @@ export default function App() {
                 {isChatVisible && (
                   <div className="w-px h-6 bg-neutral-700 mx-1 shrink-0" />
                 )}
+
+                
+                {/* Video Toggle (HIDDEN FOR NOW) */}
+                {/*
+                <button
+                  type="button"
+                  onClick={toggleVideo}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${isVideoEnabled ? 'bg-rose-500/20 text-rose-500' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
+                  title={isVideoEnabled ? "Turn off Camera" : "Turn on Camera"}
+                >
+                  {isVideoEnabled ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+                </button>
+                */}
+                
+                {/* Flip Camera (HIDDEN FOR NOW) */}
+                {/*
+                <button
+                  type="button"
+                  onClick={flipCamera}
+                  className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                  title="Flip Camera"
+                >
+                  <SwitchCamera className="w-5 h-5" />
+                </button>
+                */}
 
                 {/* Mute Mic */}
                 <button

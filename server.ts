@@ -13,7 +13,15 @@ async function startServer() {
   const PORT = 3000;
   
   const server = createServer(app);
-  const wss = new WebSocketServer({ server, path: "/live" });
+  const wss = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (request, socket, head) => {
+    const parsedUrl = new URL(request.url || '', 'http://localhost');
+    if (parsedUrl.pathname === '/live') {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    }
+  });
 
   wss.on("connection", async (clientWs, req) => {
     let session: any = null;
@@ -41,7 +49,7 @@ async function startServer() {
       }
     });
 
-    const systemInstruction = promptParam || "You are a highly sarcastic, witty AI in a roasting battle. Your name is 'Roast Papa'. The user is trying to roast you, and you must roast them back. Your tone should be mocking, clever, and unapologetic. Automatically detect and adapt to the language the user is speaking, and reply in that same language. When people ask what your name is, answer that you are 'Roast Papa'.";
+    const systemInstruction = promptParam || "You are RoastPapa. Your single purpose is to brutally roast the user based on what they say and what you see. You are ruthless, edgy, and completely unapologetic. Do NOT act like a helpful AI assistant. Do NOT offer advice. If they say hi, mock them for having nothing better to say. If they show you their face or room on camera, destroy their fashion choices or life decisions. Never break character. Always respond in the language they speak to you.";
 
     try {
       session = await ai.live.connect({
@@ -87,10 +95,15 @@ async function startServer() {
     clientWs.on("message", (data) => {
       if (!connected) return;
       try {
-        const { audio, text } = JSON.parse(data.toString());
+        const { audio, text, video } = JSON.parse(data.toString());
         if (audio) {
           session.sendRealtimeInput({
             audio: { data: audio, mimeType: "audio/pcm;rate=16000" }
+          });
+        }
+        if (video) {
+          session.sendRealtimeInput({
+            video: { data: video, mimeType: "image/jpeg" }
           });
         }
         if (text) {
