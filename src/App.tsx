@@ -874,6 +874,29 @@ export default function App() {
                 )}
               </motion.button>
             </div>
+
+            {/* SEO Content for Google AdSense Approval */}
+            <div className="mt-20 pt-8 border-t border-neutral-800 text-left w-full max-w-sm mx-auto mb-10">
+              <h2 className="text-xl font-bold text-neutral-200 mb-4">About RoastPapa: The AI Roast Generator</h2>
+              <p className="text-neutral-400 text-sm leading-relaxed mb-6">
+                Welcome to RoastPapa, the internet's most ruthless AI Roast Generator. In an era where AI is programmed to be polite and boring, RoastPapa breaks the mold. Powered by cutting-edge voice recognition and Google's advanced Gemini AI models, this application listens to what you say and delivers a brutally honest, real-time comedic roast. 
+              </p>
+              
+              <h3 className="text-lg font-semibold text-neutral-300 mb-3">How The AI Engine Works</h3>
+              <p className="text-neutral-400 text-sm leading-relaxed mb-6">
+                Our technology utilizes real-time WebSockets to stream your voice directly to the AI. Once connected, the natural language processing (NLP) engine instantly contextualizes your speech patterns, tone, and vocabulary. It then formulates a personalized, sarcastic response and streams it back to your device using low-latency text-to-speech synthesis.
+              </p>
+
+              <h3 className="text-lg font-semibold text-neutral-300 mb-3">Bring Your Own Key Architecture</h3>
+              <p className="text-neutral-400 text-sm leading-relaxed mb-6">
+                To ensure maximum privacy, security, and unlimited scalability, RoastPapa operates on a BYOK architecture. Users securely input their own Google Gemini API key, meaning your voice data is processed directly between your device and Google's servers. We do not store, record, or log your audio.
+              </p>
+
+              <h3 className="text-lg font-semibold text-neutral-300 mb-3">The Future of AI Comedy</h3>
+              <p className="text-neutral-400 text-sm leading-relaxed mb-4">
+                Artificial Intelligence is rapidly evolving beyond basic productivity tasks. RoastPapa represents the frontier of AI entertainment and digital comedy. Whether you are looking for a laugh or just need to be taken down a peg, our AI is always online.
+              </p>
+            </div>
           </div>
         </div>
       )}
