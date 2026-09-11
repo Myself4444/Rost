@@ -877,7 +877,7 @@ export default function App() {
 
             {/* SEO Content for Google AdSense Approval */}
             <div className="mt-20 pt-8 border-t border-neutral-800 text-left w-full max-w-sm mx-auto mb-10">
-              <h2 className="text-xl font-bold text-neutral-200 mb-4">About RoastPapa: The AI Roast Generator</h2>
+              <h1 className="text-xl font-bold text-neutral-200 mb-4">AI Roast Generator: RoastPapa</h1>
               <p className="text-neutral-400 text-sm leading-relaxed mb-6">
                 Welcome to RoastPapa, the internet's most ruthless AI Roast Generator. In an era where AI is programmed to be polite and boring, RoastPapa breaks the mold. Powered by cutting-edge voice recognition and Google's advanced Gemini AI models, this application listens to what you say and delivers a brutally honest, real-time comedic roast. 
               </p>
